@@ -1,0 +1,192 @@
+---
+title: "Statistical Analysis of Football Matches Data"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-05-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##### Statistical Learning Project aa: 2023/2024
+##### Group members: Flavio Agostini, Niccolò Castellan, Fabio Pimentel
+
+## Step 0, defining our goal:
+
+We present a project based on football data. 
+
+## Step 1, Obtaining data:
+
+As a first step in data acquisition it has been established which parameters could relate to a team’s success during a football match. To this end, a questionnaire was submitted to 12 football players with at least 5 years of experience in a semi-pro or pro league. The questionnaire asked them which where the most important factors to win a football match, between: 
+
+-	Ball possession
+-	Shots
+-	Shots on target
+-	Shots precision (Shots on target / Shots)
+-	Passage precision
+-	Km traveled by players
+- Quality of the roster (expressed as sum of the values of players)
+-	Discipline (yellow and red cards)
+-	Fouls committed and suffered
+-	Tackles
+
+Participants were free to add suggestions, the most common ones have been: tactics employed, tactical discipline, motivation, referee behavior, field advantage, injuries, level of team-play and experience of the team/roaster. To decide which variables to include in the final dataset, on top of this survey, considerations about data availability and numerical representation of the feature have been made. 
+The features that best suited these criteria and will thus be included in the final dataset are: 
+
+| Variable | Variable name | Explanation |
+|----------|----------|----------|
+| Field advantage  | FieldAdvantage  | valued H for "Home", or A for "Away"  |
+| Possession  | BallPoss  | expressed as a percentage  |
+| Attempted passages  | PassAtt  |   |
+| Successful passages  | PassSucc  |   |
+| Passage precision  | PassPrec  | expressed as a percentage  |
+| Shots  | Shots  |  |
+| Shots on target  | ShotsOnT  |  |
+| Shots precision  | ShotsPrec  | expressed as a percentage  |
+| Roster quality  | RosterQuality  | expressed as sum of market value for each player competing in the match, including substitutions  |
+| Knowledge of the league  | Knowledge  | expressed as average of matches played in the team's championship by every player competing in the match  |
+| Yellow cards  | YellowC  |  |
+| Red cards  | RedC  |   |
+| Fouls committed  | FoulsC  |   |
+| Fouls taken  | FoulsT  |   |
+| Attempted tackles  | TacklesAtt  |   |
+| Successful tackles  | TacklesW  |   |
+| Tackles efficiency  | TacklesWRatio  | expressed as a percentage  |
+| Air duels won  | AirDuelW  | expressed as a percentage  |
+| Attempted dribbles  | DribAtt  |   |
+| Successful dribbles  | DribW  |   |
+| Dribbles efficiency  | DribWRation  | expressed as a percentage  |
+
+On top of these features, other four variables, that will serve as target variables, have been gathered: Goals scored, goals taken, outcome of the match and points gained. 
+
+10 teams have been chosen for data collection. Of these, 5 teams are the winners of the most prestigious national leagues in Europe. The other 5 have been randomly picked from the same leagues, between teams that didn't perform well enough to qualify for the continental cups but avoided placements that lead to relegation. 
+
+"Winners" group:
+
+1.    Barclays Permier League (Inghilterra) – Chelsea
+2.    La Liga (Spagna) – Real Madrid
+3.    Bundesliga (Germania) – Bayern Munich
+4.    Ligue 1 (Francia) – AS Monaco
+5.    Serie A (Italia) – Juventus
+
+"Control" group: 
+
+1.    Barclays Permier League (Inghilterra) – Everton, pos. 7
+2.    La Liga (Spagna) – Celta Vigo, pos. 13
+3.    Bundesliga (Germania) – Eintracht Frankfur, pos. 11
+4.    Ligue 1 (Francia) – Montpellier, pos. 15
+5.    Serie A (Italia) – Bologna, pos. 15
+
+Data has been acquired during the year 2018, as part of a BSc thesis project in Physical Education. The data has been collected manually from the Internet. To validate it, for each value a cross-check has been performed between the website whoscored, and the official ESPN website. The only exception to this concerns the parameter “Quality of the roster”. To calculate it market values given by transfermarkt have been used. The data has then been saved in a Microsoft Excel spreadsheet for ease of organization and later converted into csv format to be compatible with the R software work environment, where the statistical analysis will be performed.
+
+We import our data and assign it to a dataframe 'df': 
+```{r}
+df <- read.csv('C:/Users/saius/Documents/SL_project/DatasetR_eng_fin.csv', header=TRUE, sep=';', 
+               fileEncoding="UTF-8")
+```
+
+## Step 2, Clean and filter data:
+
+Our data is been manually collected and curated so it should already be complete, we nevertheless check for any missing value:
+```{r}
+anyNA(df)
+```
+Using information from "ID" coulumn, we create a new column that identifies as "1" members of the "Winners" group, and as "0" members of the "Control" group:
+```{r}
+df$Group <- ifelse(grepl("Ca", df$ID), "1",
+                    ifelse(grepl("Co", df$ID), "0", NA))
+df$Group <- as.integer(df$Group)
+```
+Let's see what data types we have for our features:
+```{r}
+str(df)
+```
+We notice that percentages variables are stored as characters. we would like them to be represented as numerical [0,1] 
+```{r}
+df$BallPoss <- as.numeric(sub(",", ".", sub("%", "", df$BallPoss))) / 100
+df$ShotsPrec <- as.numeric(sub(",", ".", sub("%", "", df$ShotsPrec))) / 100
+df$PassPrec <- as.numeric(sub(",", ".", sub("%", "", df$PassPrec))) / 100
+df$TacklesWRatio <- as.numeric(sub(",", ".", sub("%", "", df$TacklesWRatio))) / 100
+df$AirDuelW <- as.numeric(sub(",", ".", sub("%", "", df$AirDuelW))) / 100
+df$DribWRatio <- as.numeric(sub(",", ".", sub("%", "", df$DribWRatio))) / 100
+```
+the Knowledge column is a chr as well, let's handle it:
+```{r}
+df$Knowledge <- as.numeric(sub(",", ".", df$Knowledge))
+```
+Columns ID and match are not useful for our model, let's remove them
+```{r}
+df$ID <- NULL
+df$Match <- NULL
+```
+We notice that the "result" column is redundant wrt goals made and taken, we remove it
+```{r}
+df$Result <- NULL
+```
+Let's do some label encoding to handle cathegorical variables.
+We want in FieldAdvantage column, to show Home matches "H" as "1" and Away matches "A" as "0"
+```{r}
+df$FieldAdvantage <- ifelse(df$FieldAdvantage == "H", 1, 
+                            ifelse(df$FieldAdvantage == "A", 0, NA))
+```
+We then want losses "L" as "-1", wins "W" as "1" and draws "D" as "0" in OutcomeWL column. This column can be redundant with respect to Points won. We will think about it later.
+```{r}
+df$OutcomeWL <- ifelse(df$OutcomeWL == "W", 1, 
+                            ifelse(df$OutcomeWL == "D", 0, 
+                                   ifelse(df$OutcomeWL == "L", -1, NA)))
+```
+We confirm that column is now numerical 
+```{r}
+str(df)
+```
+Since our target variable is OutcomeWL, we check if it is balanced:
+```{r}
+prop.table(table(df$OutcomeWL))
+```
+The variable is not balanced, with a majority of winning matches (55%). The question that we want to answer by building a model with this target variable is:
+- Which are the most important factors that contribute to a win? 
+We therefore decide to just concern ourselves with won matches a not-won matches We achieve this by joining draws and losses in a single category, thereby balancing the target variable.
+```{r}
+df$OutcomeWL[df$OutcomeWL == -1] <- 0
+```
+We now have "0" for losses and draws and "1" for wins. 
+
+## Step 3, Explore Data:
+
+Let's see which features are correlated with each other:
+
+S <- round(cov(df), 4)
+P <- round(cor(df), 4)
+
+We use a heatmap to explore the correlations
+col<- colorRampPalette(c("blue", "white", "red"))(20)
+heatmap(x = P, col = col, symm = TRUE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+DS questions:
+- which are the most important factors that contribute to a win
+- do these factors change between group winners and control? 
+- what can we learn from these statistics about the difference between control and winners in how
+  they play the game? 
+- Without using the roster quality feature is it possible to predict if 
+  a team is a winner or control? which are the features that contribute to this the most? 
+- Is it possible to predict the amount of goals scored, or taken, by looking at these statistics? 
+  with which accuracy? 
+- between the statistics that can be improved with training, which are the most relevant toward
+  scoring more goals or winning a match? 
+
+
+
